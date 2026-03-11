@@ -27,32 +27,35 @@ from rich.traceback import Traceback
 
 os.environ["${CHILD_PROCESS_ENV_VAR}"] = "1"
 
-out_file = os.fdopen(${OUT_WFD}, 'wb')
-try:
-    # Read everything as a single dictionary from the provided FD
+def _unpack():
+    # Read serialized objects from the input file descriptor
     with os.fdopen(${IN_RFD}, 'rb') as in_file:
         data = cloudpickle.loads(in_file.read())
-    
-    # Extract components from the dictionary and deserialize them again
+    # Unpack the function, its args and kwargs
     func = cloudpickle.loads(data['func'])
     args = cloudpickle.loads(data['args'])
     kwargs = cloudpickle.loads(data['kwargs'])
-    # Call func with args and kwargs
-    result = func(*args, **kwargs)
-    # Serialize the result and send it back to the parent process
-    out_file.write(cloudpickle.dumps({"result": result, "success": True}))
-except Exception as e:
-    # Handle exceptions and return them in a structured way
-    error_data = {
-        "success": False,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "traceback": traceback.format_exc(),
-        "rich_traceback": Traceback.from_exception(type(e), e, e.__traceback__)
-    }
-    out_file.write(cloudpickle.dumps(error_data))
-finally:
-    out_file.close()
+    return func, args, kwargs
+
+# Try to unpack and execute the function and send the result back to the parent process
+with os.fdopen(${OUT_WFD}, 'wb') as out_file:
+    try:
+        # Unpack the function, its args and kwargs
+        func, args, kwargs = _unpack()
+        # Call the function with its args and kwargs
+        result = func(*args, **kwargs)
+        # Serialize the result and send it back to the parent process
+        out_file.write(cloudpickle.dumps({"result": result, "success": True}))
+    except Exception as e:
+        # Handle exceptions and return them in a structured way
+        error_data = {
+            "success": False,
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc(),
+            "rich_traceback": Traceback.from_exception(type(e), e, e.__traceback__)
+        }
+        out_file.write(cloudpickle.dumps(error_data))
 """)
 
 
